@@ -1,132 +1,188 @@
 ---
-name: interview-digest
-description: Transforms raw interview or podcast transcripts into structured Q/A/commentary digests. Use this skill whenever the user provides a transcript (interview, podcast, earnings call, press conference) and wants it organized, summarized, or analyzed — especially when they say things like "organize this transcript", "summarize this interview", "what did X say about Y", "turn this into a digest", or "I want Q/A format". Also trigger when the user uploads a long conversation text and wants to extract key points or prepare it for sharing with others who haven't seen it. Handles both English and Chinese output. Always use this skill for transcripts longer than ~15 minutes of content.
+name: transcript-processor
+description: Transforms raw interview or podcast transcripts into structured Q/A digests, with optional commentary layer. Use this skill whenever the user provides a transcript (interview, podcast, earnings call, press conference) and wants it cleaned, organized, or analyzed. Trigger words include: "organize this transcript", "clean up this interview", "Q/A format", "digest", "summarize this interview", "what did X say about Y". Also trigger when the user uploads a long conversation text and wants to extract key points or prepare it for sharing. Handles any output language. Always use this skill for transcripts longer than ~15 minutes of content.
 ---
 
-# Interview Digest Skill
+# Transcript Processor Skill
 
-Turns raw transcripts into clean, structured digests with three layers per exchange:
-- **Q** — original question, lightly cleaned (remove filler words only)
-- **A** — speaker's answer, faithfully paraphrased
-- **Commentary** — independent interpretation: what was avoided, what's verifiable, what's spin
+## Modes
 
----
+This skill has two modes. Infer from the user's request; ask only if genuinely ambiguous.
 
-## Step 0: Clarify before starting
+| Mode | When to use | Output |
+|---|---|---|
+| **clean** | "clean this up", "Q/A format", "文稿清洗", "整理成对话格式" | Q + A only, no commentary |
+| **digest** | "digest", "analyze", "what did X avoid", "实话实说", "深度整理" | Q + A + Commentary + Meta-analysis |
 
-Before writing anything, ask (or infer from context) two things:
-
-1. **Who is the audience?** Options:
-   - Self-reference (quick review) → shorter A, lighter commentary
-   - Someone who hasn't seen the interview → full A, complete context
-   - Research/writing material → deep commentary, cross-reference external facts
-
-2. **Commentary depth?**
-   - Light: flag evasions and contradictions only
-   - Deep: add external verification, industry context, pattern analysis
-   - Mixed (default): deep on important topics, light on minor ones
-
-If the user hasn't said, default to: **full audience (hasn't seen it) + mixed commentary**.
+Default to **clean** unless the user explicitly asks for analysis or commentary.
 
 ---
 
-## Step 1: Build the skeleton first (mandatory)
+## Before doing anything: state the plan and wait for confirmation
 
-Do NOT start writing Q/A blocks directly. First:
+Before running any script or writing any output, state the execution plan in this exact format and stop:
 
-```python
-# Parse transcript by timestamp markers
-# Split into segments
-# Classify each segment: Q / A / QA-mixed
-# Merge adjacent same-speaker segments
-# Output: numbered list of topics with timestamps
+```
+**Plan**
+- Mode: clean / digest
+- Output language: [e.g. English / Chinese / bilingual: EN transcript, ZH commentary]
+- Translation: yes / no — [Q and A will / will not be translated to target language]
+- Steps: 1. save transcript → 2. run parser → 3. clean Q/A [→ 4. translate if applicable] → 5. write file
+
+Confirm to proceed.
 ```
 
-Show the skeleton to the user (or just proceed if the task is clear). The skeleton prevents omissions — you're doing a traversal, not a retrieval.
-
-**Typical split logic:**
-- Segments starting with filler answers ("Look,", "I think", "No,", "Yes.") → A
-- Segments ending in "?" or containing multiple questions → Q
-- Long segments with both → QA-mixed (split at last "?" before the answer begins)
+Do not start executing until the user confirms. This catches mismatches in language, translation intent, and mode before any work is done.
 
 ---
 
-## Step 2: Clean the questions (Q)
+## Mandatory second step: run the parser
 
-Rules:
-- Remove only filler words: `uh`, `um`, `you know`, `I mean`, `like`, `right` (standalone)
-- Do NOT rephrase, reorder, or summarize
-- Preserve the interviewer's framing, edge, and follow-up logic
-- If multiple questions are chained, keep them all — the chain is intentional
+**Before writing any Q/A blocks, always run the transcript parser script.**
 
----
+This is not optional. The script does mechanical timestamp-based segmentation that prevents omissions. Do not rely on reading and remembering — traverse, don't retrieve.
 
-## Step 3: Paraphrase the answers (A)
+```bash
+python3 scripts/parse_transcript.py <transcript_file>
+```
 
-Rules:
-- Faithful to meaning, not word-for-word
-- Preserve specific numbers, named products, named people
-- Remove repeated false starts and redundant hedges
-- Do NOT editorialize — save that for Commentary
-- If the answer spans multiple transcript segments, combine them
+The script outputs a numbered skeleton of all segments with timestamps and types (Q / A / QA-mixed). Review the skeleton, correct any misclassifications manually if needed, then proceed to cleaning.
 
----
+If the transcript file is not yet saved to disk, write it first:
 
-## Step 4: Write Commentary
-
-Commentary is independent analysis, not a summary of A. Ask:
-
-1. **Did they answer the question?** If not, what did they pivot to and why?
-2. **What's the structural tension they avoided?** (e.g. answering "is revenue up?" with "costs are down")
-3. **What's verifiable?** Label claims as `[verifiable]`, `[inference]`, or `[industry consensus]`
-4. **Is there a better framing they didn't use?** The analogy they gave — does it actually hold?
-5. **Pattern across the interview:** (add in meta-analysis section at the end)
-
-For minor/transitional topics, commentary can be 1-2 sentences. For core topics, go deep.
+```bash
+cat << 'TRANSCRIPT' > /tmp/transcript.txt
+[paste transcript content]
+TRANSCRIPT
+python3 scripts/parse_transcript.py /tmp/transcript.txt
+```
 
 ---
 
-## Step 5: Meta-analysis (end of document)
+## Step 1: Clean Q (questions)
 
-After all Q/A/Commentary blocks, add a section identifying recurring patterns:
+Q is cleaned original speech. Remove only:
+- Filler words: `uh`, `um`, `you know`, `I mean`, `like`, `right` (standalone)
+
+Do NOT:
+- Rephrase, reorder, or summarize
+- Merge separate questions into one
+- Remove the interviewer's framing, edge, or follow-up logic
+- Drop the timestamp
+
+Format:
+```
+**[timestamp]**
+
+**Q:** Cleaned question text here.
+```
+
+---
+
+## Step 2: Clean A (answers)
+
+A is cleaned original speech — not a summary, not a paraphrase. The speaker's own words must be preserved.
+
+Remove only:
+- Filler words: `uh`, `um`, `you know`, `I mean`, `like`, `right` (standalone)
+- Repeated false starts: `"I think I think I think"` → `"I think"`
+- Redundant hedges that repeat within the same sentence
+
+Do NOT:
+- Rephrase, reorder, or substitute words
+- Compress or summarize
+- Drop specific numbers, named products, or named people
+- Editorialize (save that for Commentary in digest mode)
+
+If the answer spans multiple transcript segments, combine them in order.
+
+---
+
+## Step 3 (digest mode only): Write Commentary
+
+Skip entirely in clean mode.
+
+Commentary is independent analysis — not a restatement of A. For each exchange, ask:
+
+1. **Did they answer the question?** If not, what did they pivot to, and why?
+2. **What structural tension did they avoid?** (e.g. answering "is revenue up?" with "costs are down")
+3. **What's verifiable?** Label claims: `[verifiable]` / `[inference]` / `[industry consensus]`
+4. **Does their analogy actually hold?** Name it if it doesn't.
+
+Depth: 1-2 sentences for minor topics, full paragraph for core topics.
+
+---
+
+## Step 4 (digest mode only): Meta-analysis
+
+Skip entirely in clean mode.
+
+After all Q/A/Commentary blocks, add a final section identifying recurring patterns:
 
 - Deflection patterns (e.g. "always cites historical data when asked about future risk")
 - Framing choices (e.g. "consistently reframes competitor gaps as 'different markets'")
-- The 2-3 moments of genuine candor (these stand out and are high-signal)
+- The 2-3 moments of genuine candor (high-signal, stand out against the baseline)
 - Claims that can be cross-checked against public records
 
 ---
 
-## Output formats
+## Output language, translation, and section labels
 
-**Default (mixed-language):** Q in original language, A paraphrased, Commentary in user's language  
-**Full translation:** All three sections translated, technical terms kept in English  
-**English only:** All sections in English
+### Translation rule
 
-Specify at top of document:
+If the user specifies an output language different from the transcript language, **translate Q and A into the target language** after cleaning. Translation comes after cleaning — clean first in the original language, then translate.
+
+- "中文 clean" → clean English transcript, then translate Q and A to Chinese
+- "bilingual" → keep original language for Q and A, target language for Commentary only
+- "English clean" on an English transcript → no translation needed
+
+When in doubt, include `Translation: yes/no` explicitly in the plan step and confirm with the user.
+
+### Section labels
+
+Match labels to output language. Do not hardcode any single language.
+
+| Section | English | Chinese | Japanese |
+|---|---|---|---|
+| Question | `**Q:**` | `**Q：**` | `**Q：**` |
+| Answer | `**A:**` | `**A：**` | `**A：**` |
+| Commentary | `**Commentary:**` | `**实话：**` | `**解説：**` |
+| Meta section | `## Meta-analysis` | `## 元分析` | `## メタ分析` |
+| Verification | `[verifiable]` `[inference]` `[industry consensus]` | `【可验证】` `【推断】` `【行业共识】` | translate |
+
+For bilingual output (e.g. EN transcript + ZH commentary):
+- Q and A: original language label + original language text
+- Commentary: target language label + target language text
+
+Document header:
 ```
-> Source: [interview name / date if known]
-> Note: Q = lightly cleaned original; A = faithful paraphrase; Commentary = independent analysis
-> Labels: [verifiable] [inference] [industry consensus]
+> Source: [name / date]
+> Mode: clean / digest
+> Output language: [e.g. English / Chinese / bilingual: EN transcript, ZH commentary]
+> Translation: yes / no
+> Note: Q and A = cleaned original speech (fillers and false starts removed only)
 ```
 
 ---
 
 ## File output
 
-- Single `.md` file per transcript
-- If user requests translation, produce two files: `_original.md` and `_cn.md` (or target language)
-- Filename: `[interviewee]_[interviewer or publication]_digest.md`
+- Filename: `[interviewee]_[source]_[mode].md` — e.g. `sundar_allin_digest.md`, `sundar_allin_clean_zh.md`
+- One file per mode/language combination
+- Run `scripts/check_digest.py` on the output before presenting to the user
 
 ---
 
-## Common failure modes to avoid
+## Common failure modes
 
 | Failure | Fix |
 |---|---|
-| Skipping segments because they seem minor | Always traverse by timestamp, never by importance |
-| Q becomes a summary instead of the original | Only remove filler words — nothing else |
-| Commentary becomes a restatement of A | Commentary must add information A doesn't contain |
-| All commentary is equally deep | Weight depth by topic importance |
-| Missing meta-analysis | Always add the pattern section at the end |
-| Treating "no direct answer" as a neutral fact | Name what was avoided and why it likely was |
+| Skip parser script, go straight to writing | Never. Always run `parse_transcript.py` first |
+| A becomes a summary | A is cleaning only — preserve all words except fillers and false starts |
+| Q loses the timestamp | Every Q block must have its timestamp |
+| Commentary added in clean mode | Clean mode has no commentary. None. |
+| Skipping segments that seem minor | Traverse by timestamp — importance is irrelevant at this step |
+| "No direct answer" treated as neutral | In digest mode: name what was avoided and why |
+| Meta-analysis missing in digest mode | Always required in digest mode, never in clean mode |
+| Output language ≠ transcript language but no translation done | If output language differs from transcript, translate Q and A after cleaning |
+| Executing before user confirms plan | Always state plan and wait for explicit confirmation first |

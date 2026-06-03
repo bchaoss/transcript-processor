@@ -2,6 +2,8 @@
 name: transcript-processor
 description: >-
   Transforms raw interview or podcast transcripts into structured Q/A digests, with optional commentary layer. Use this skill whenever the user provides a transcript (interview, podcast, earnings call, press conference) and wants it cleaned, organized, or analyzed. Trigger words include: "organize this transcript", "clean up this interview", "Q/A format", "digest", "summarize this interview", "what did X say about Y". Also trigger when the user uploads a long conversation text and wants to extract key points or prepare it for sharing. Handles any output language. Always use this skill for transcripts longer than ~15 minutes of content.
+tags: [claude-skills, transcript-processor, podcast-tools, interview-analysis]
+when_to_use: When the user provides a raw transcript file (interview, podcast, meeting notes) and wants to clean up filler words, structure it into a Q&A format, or generate a deep digest/analysis without losing original context.
 ---
 
 # Transcript Processor Skill

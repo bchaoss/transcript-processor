@@ -10,14 +10,17 @@ when_to_use: When the user provides a raw transcript file (interview, podcast, m
 
 ## Modes
 
-This skill has two modes. Infer from the user's request; ask only if genuinely ambiguous.
+This skill has three modes. Infer from the user's request; ask only if genuinely ambiguous.
 
 | Mode | When to use | Output |
 |---|---|---|
 | **clean** | "clean this up", "Q/A format", "文稿清洗", "整理成对话格式" | Q + A only, no commentary |
 | **digest** | "digest", "analyze", "what did X avoid", "实话实说", "深度整理" | Q + A + Commentary + Meta-analysis |
+| **upgrade** | "upgrade this clean file", "add commentary", "把clean升级为digest", user provides an existing clean .md | Commentary + Meta-analysis added to existing clean file; Q and A untouched |
 
 Default to **clean** unless the user explicitly asks for analysis or commentary.
+
+**Upgrade mode is a separate entry point — skip to the Upgrade section if the user provides an existing clean file.**
 
 ---
 
@@ -30,7 +33,18 @@ Before running any script or writing any output, state the execution plan in thi
 - Mode: clean / digest
 - Output language: [e.g. English / Chinese / bilingual: EN transcript, ZH commentary]
 - Translation: yes / no — [Q and A will / will not be translated to target language]
-- Steps: 1. save transcript → 2. run parser → 3. clean Q/A [→ 4. translate if applicable] → 5. write file
+- Steps: 1. save transcript → 2. run parser → 3. clean Q/A → 4. if translation: translate Q/A → 5. if digest: add commentary per block → 6. if digest: add meta-analysis → 7. write file
+
+Confirm to proceed.
+```
+
+For upgrade mode, use this plan format instead:
+```
+**Plan**
+- Mode: upgrade (clean → digest)
+- Input file: [filename]
+- Commentary language: [e.g. Chinese]
+- Steps: 1. read clean file → 2. add commentary per block → 3. add meta-analysis → 4. write digest file
 
 Confirm to proceed.
 ```
@@ -39,7 +53,9 @@ Do not start executing until the user confirms. This catches mismatches in langu
 
 ---
 
-## Mandatory second step: run the parser
+## Main flow (clean and digest modes)
+
+### Step 1: Run the parser
 
 **Before writing any Q/A blocks, always run the transcript parser script.**
 
@@ -62,7 +78,7 @@ python3 scripts/parse_transcript.py /tmp/transcript.txt
 
 ---
 
-## Step 1: Clean Q (questions)
+### Step 2: Clean Q (questions)
 
 Q is cleaned original speech. Remove only:
 - Filler words: `uh`, `um`, `you know`, `I mean`, `like`, `right` (standalone)
@@ -82,7 +98,7 @@ Format:
 
 ---
 
-## Step 2: Clean A (answers)
+### Step 3: Clean A (answers)
 
 A is cleaned original speech — not a summary, not a paraphrase. The speaker's own words must be preserved.
 
@@ -101,7 +117,7 @@ If the answer spans multiple transcript segments, combine them in order.
 
 ---
 
-## Step 3 (digest mode only): Write Commentary
+### Step 4 (digest mode only): Write Commentary
 
 Skip entirely in clean mode.
 
@@ -116,7 +132,7 @@ Depth: 1-2 sentences for minor topics, full paragraph for core topics.
 
 ---
 
-## Step 4 (digest mode only): Meta-analysis
+### Step 5 (digest mode only): Meta-analysis
 
 Skip entirely in clean mode.
 
@@ -126,6 +142,17 @@ After all Q/A/Commentary blocks, add a final section identifying recurring patte
 - Framing choices (e.g. "consistently reframes competitor gaps as 'different markets'")
 - The 2-3 moments of genuine candor (high-signal, stand out against the baseline)
 - Claims that can be cross-checked against public records
+
+---
+
+## Upgrade mode (separate entry point)
+
+Use this path when the user provides an existing clean `.md` file and asks to add commentary or upgrade to digest. **Do not run the parser. Do not touch Q or A text.**
+
+1. Read the existing clean file directly. Treat each Q/A block as a completed segment.
+2. Add Commentary after each A block (same rules as Step 4 above).
+3. Add Meta-analysis at the end (same rules as Step 5 above).
+4. Write the result as a new file: `[original_name]_digest.md`
 
 ---
 
@@ -180,7 +207,7 @@ Document header:
 
 | Failure | Fix |
 |---|---|
-| Skip parser script, go straight to writing | Never. Always run `parse_transcript.py` first |
+| Skip parser script, go straight to writing | Never. Always run `parse_transcript.py` first in clean/digest mode |
 | A becomes a summary | A is cleaning only — preserve all words except fillers and false starts |
 | Q loses the timestamp | Every Q block must have its timestamp |
 | Commentary added in clean mode | Clean mode has no commentary. None. |
@@ -189,3 +216,5 @@ Document header:
 | Meta-analysis missing in digest mode | Always required in digest mode, never in clean mode |
 | Output language ≠ transcript language but no translation done | If output language differs from transcript, translate Q and A after cleaning |
 | Executing before user confirms plan | Always state plan and wait for explicit confirmation first |
+| Modifying Q or A text in upgrade mode | Upgrade mode only adds Commentary and Meta-analysis; Q and A are read-only |
+| Running parser in upgrade mode | Upgrade mode skips parser entirely; input is already a clean .md file |
